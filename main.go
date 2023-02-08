@@ -51,7 +51,7 @@ func bToMb(b uint64) uint64 {
 }
 
 func generateNumber() int {
-	return rand.Intn(int(math.MaxInt64))
+	return rand.Intn(math.MaxInt)
 }
 
 func generateNumberHex(number int) []byte {
