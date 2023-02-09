@@ -8,7 +8,7 @@
 !Dockerfile
 !Makefile
 
-
+input.txt
 # misc
 .DS_Store
 .env

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -60,13 +61,14 @@ func generateNumberHex(number int) []byte {
 
 func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.Context) error {
 	errs, _ := errgroup.WithContext(ctx)
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	filelock := sync.Mutex{}
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
-			f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-			if err != nil {
-				return err
-			}
-
 			var buf []byte
 			buf = make([]byte, 0, bufferSize*1024*1024)
 			for j := 0; j < dataPerGoroutine; j++ {
@@ -74,9 +76,12 @@ func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.
 				buf = append(buf, data...)
 				buf = append(buf, '\n')
 				if len(buf)+32 > cap(buf) {
+					filelock.Lock()
 					if _, err := f.Write(buf); err != nil {
+						filelock.Unlock()
 						return err
 					}
+					filelock.Unlock()
 					buf = make([]byte, 0, bufferSize*1024*1024)
 				}
 			}
