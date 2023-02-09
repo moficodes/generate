@@ -1,15 +1,15 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 
@@ -50,80 +50,59 @@ func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
 }
 
-func generateNumber(r *rand.Rand) int64 {
-	return r.Int63()
-}
-
-func generateNumberHex(number int64) []byte {
-	return []byte(fmt.Sprintf("%019x", number))
-}
-
-// appendNumberHex is like generateNumberHex, but more efficient and with a more difficult API
-// When b has sufficient capacity, no allocation is involved.
-func appendNumberHex(number int64, b []byte) []byte {
-	return fmt.Appendf(b, "%019x", number)
-}
-
-// appendInt16 is like generateNumberHex, but more efficient and with a more difficult API
-// When b has sufficient capacity, no allocation is involved.
-func appendInt16(number int64, b []byte) []byte {
-	// return strconv.AppendInt(b, number, 16)
-	// strconv.AppendInt is fast but doesn't do the padding for us
-
-	var scratch [256]byte // this is on the stack (probably)
-	data := strconv.AppendInt(scratch[:0], number, 16)
-
-	p := 19 - len(data) // number of '0' to be padded
-	if p > 0 {
-		b = append(b, zeroes[:p]...)
-	}
-	return append(b, data...)
-}
-
-// zeroes is only read by appendInt16, never modified
-var zeroes = bytes.Repeat([]byte{'0'}, 19)
-
 func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	return write(ctx, f, goroutines, dataPerGoroutine)
+	bufferByteSize := bufferSize * 1024 * 1024
+	bf := bufio.NewWriterSize(f, bufferByteSize)
+	err = write(ctx, bf, goroutines, dataPerGoroutine)
+	if err != nil {
+		return err
+	}
+	return bf.Flush()
 }
 
 func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) error {
 	errs, _ := errgroup.WithContext(ctx)
 	var filelock sync.Mutex
-	bufferByteSize := bufferSize * 1024 * 1024
+	n := bufferSize * 1024 * 4 // number of lines in 1 buffered batch
 
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
 			r := rand.New(rand.NewSource(time.Now().UnixNano()))
-			buf := make([]byte, 0, bufferByteSize)
+			randomBytes := make([]byte, 8*n)
+			r.Read(randomBytes)
+			randomHexDigits := make([]byte, 16*n)
+			outputBuffer := make([]byte, 0, 17*n+1) // 1 '\n' after every 16 digits
 
-			flushAndReuse := func() error {
+			flushRefreshReuse := func() error {
 				// Flush to w
 				filelock.Lock()
-				defer filelock.Unlock()
-				_, err := w.Write(buf)
-				// Reset and reuse
-				buf = buf[:0]
+				_, err := w.Write(outputBuffer)
+				filelock.Unlock()
+				// Refresh work buffers with new random bytes
+				r.Read(randomBytes)
+				hex.Encode(randomHexDigits, randomBytes)
+				// Reuse output buffer
+				outputBuffer = outputBuffer[:0]
 				return err
 			}
 
 			for j := 0; j < dataPerGoroutine; j++ {
-				buf = appendInt16(generateNumber(r), buf)
-				buf = append(buf, '\n')
-
-				if len(buf)+256 > len(buf) {
-					if err := flushAndReuse(); err != nil {
+				k := j % n
+				if k == 0 {
+					if err := flushRefreshReuse(); err != nil {
 						return err
 					}
 				}
+				outputBuffer = append(outputBuffer, randomHexDigits[16*k:16*k+16]...)
+				outputBuffer = append(outputBuffer, '\n')
 			}
 
-			return flushAndReuse()
+			return flushRefreshReuse()
 		})
 	}
 
