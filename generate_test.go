@@ -35,3 +35,17 @@ func BenchmarkDiscard10_000_seq(b *testing.B) {
 		write(ctx, io.Discard, 1, 10_000)
 	}
 }
+
+func BenchmarkDiscard10_000_4workers(b *testing.B) {
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		write(ctx, io.Discard, 4, 2_500)
+	}
+}
+
+func BenchmarkDiscard10_000_50workers(b *testing.B) {
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		write(ctx, io.Discard, 50, 200)
+	}
+}
