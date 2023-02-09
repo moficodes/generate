@@ -1,14 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -21,8 +22,6 @@ var filename string
 var bufferSize int
 
 var dataPerGoroutine int
-
-var r = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func init() {
 	flag.IntVar(&count, "count", 0, "number of record to generate")
@@ -51,13 +50,38 @@ func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
 }
 
-func generateNumber() int {
-	return r.Intn(math.MaxInt)
+func generateNumber(r *rand.Rand) int64 {
+	return r.Int63()
 }
 
-func generateNumberHex(number int) []byte {
+func generateNumberHex(number int64) []byte {
 	return []byte(fmt.Sprintf("%019x", number))
 }
+
+// appendNumberHex is like generateNumberHex, but more efficient and with a more difficult API
+// When b has sufficient capacity, no allocation is involved.
+func appendNumberHex(number int64, b []byte) []byte {
+	return fmt.Appendf(b, "%019x", number)
+}
+
+// appendInt16 is like generateNumberHex, but more efficient and with a more difficult API
+// When b has sufficient capacity, no allocation is involved.
+func appendInt16(number int64, b []byte) []byte {
+	// return strconv.AppendInt(b, number, 16)
+	// strconv.AppendInt is fast but doesn't do the padding for us
+
+	var scratch [256]byte // this is on the stack (probably)
+	data := strconv.AppendInt(scratch[:0], number, 16)
+
+	p := 19 - len(data) // number of '0' to be padded
+	if p > 0 {
+		b = append(b, zeroes[:p]...)
+	}
+	return append(b, data...)
+}
+
+// zeroes is only read by appendInt16, never modified
+var zeroes = bytes.Repeat([]byte{'0'}, 19)
 
 func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
@@ -71,41 +95,35 @@ func writeToFile(ctx context.Context, filename string, goroutines, dataPerGorout
 func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) error {
 	errs, _ := errgroup.WithContext(ctx)
 	var filelock sync.Mutex
+	bufferByteSize := bufferSize * 1024 * 1024
+
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
-			buf := make([]byte, bufferSize*1024*1024)
-			index := 0
+			r := rand.New(rand.NewSource(time.Now().UnixNano()))
+			buf := make([]byte, 0, bufferByteSize)
+
+			flushAndReuse := func() error {
+				// Flush to w
+				filelock.Lock()
+				defer filelock.Unlock()
+				_, err := w.Write(buf)
+				// Reset and reuse
+				buf = buf[:0]
+				return err
+			}
+
 			for j := 0; j < dataPerGoroutine; j++ {
-				data := generateNumberHex(generateNumber())
+				buf = appendInt16(generateNumber(r), buf)
+				buf = append(buf, '\n')
 
-				for _, v := range data {
-					buf[index] = v
-					index++
-				}
-				buf[index] = '\n'
-				index++
-
-				if index+20 > len(buf) {
-					filelock.Lock()
-					if _, err := w.Write(buf[:index]); err != nil {
-						filelock.Unlock()
+				if len(buf)+256 > bufferByteSize {
+					if err := flushAndReuse(); err != nil {
 						return err
 					}
-					filelock.Unlock()
-					buf = make([]byte, bufferSize*1024*1024)
-					index = 0
 				}
 			}
 
-			if index > 0 {
-				filelock.Lock()
-				if _, err := w.Write(buf[:index]); err != nil {
-					filelock.Unlock()
-					return err
-				}
-				filelock.Unlock()
-			}
-			return nil
+			return flushAndReuse()
 		})
 	}
 
