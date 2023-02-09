@@ -116,7 +116,7 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 				buf = appendInt16(generateNumber(r), buf)
 				buf = append(buf, '\n')
 
-				if len(buf)+256 > len(buf) {
+				if len(buf)+256 > bufferByteSize {
 					if err := flushAndReuse(); err != nil {
 						return err
 					}
