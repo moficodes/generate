@@ -69,31 +69,37 @@ func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.
 	filelock := sync.Mutex{}
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
-			var buf []byte
-			buf = make([]byte, 0, bufferSize*1024*1024)
+			buf := make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+			index := 0
 			for j := 0; j < dataPerGoroutine; j++ {
 				data := generateNumberHex(generateNumber())
-				buf = append(buf, data...)
-				buf = append(buf, '\n')
-				if len(buf)+32 > cap(buf) {
+
+				for k := 0; k < len(data); k++ {
+					buf[index] = data[k]
+					index++
+				}
+				buf[index] = '\n'
+				index++
+
+				if index+20 > len(buf) {
 					filelock.Lock()
-					if _, err := f.Write(buf); err != nil {
+					if _, err := f.Write(buf[:index]); err != nil {
 						filelock.Unlock()
 						return err
 					}
 					filelock.Unlock()
-					buf = make([]byte, 0, bufferSize*1024*1024)
+					buf = make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+					index = 0
 				}
 			}
 
-			if len(buf) > 0 {
-				if _, err := f.Write(buf); err != nil {
+			if index > 0 {
+				filelock.Lock()
+				if _, err := f.Write(buf[:index]); err != nil {
+					filelock.Unlock()
 					return err
 				}
-			}
-
-			if err := f.Close(); err != nil {
-				return err
+				filelock.Unlock()
 			}
 			return nil
 		})
