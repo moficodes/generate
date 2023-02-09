@@ -21,8 +21,9 @@ var bufferSize int
 
 var dataPerGoroutine int
 
+var r = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func init() {
-	rand.Seed(time.Now().UnixNano())
 	flag.IntVar(&count, "count", 0, "number of record to generate")
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
 	flag.StringVar(&filename, "file", "input.txt", "name of the file")
@@ -50,7 +51,7 @@ func bToMb(b uint64) uint64 {
 }
 
 func generateNumber() int {
-	return rand.Intn(math.MaxInt)
+	return r.Intn(math.MaxInt)
 }
 
 func generateNumberHex(number int) []byte {
