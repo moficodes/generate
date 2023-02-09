@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"testing"
 )
@@ -25,5 +26,12 @@ func BenchmarkWriteFile10_000_seq(b *testing.B) {
 		filename := tmpfile.Name()
 
 		writeToFile(ctx, filename, 1, 10_000)
+	}
+}
+
+func BenchmarkDiscard10_000_seq(b *testing.B) {
+	ctx := context.Background()
+	for i := 0; i < b.N; i++ {
+		write(ctx, io.Discard, 1, 10_000)
 	}
 }
