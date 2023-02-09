@@ -27,8 +27,6 @@ func init() {
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
 	flag.StringVar(&filename, "file", "input.txt", "name of the file")
 	flag.IntVar(&bufferSize, "buffer", 1, "buffer size in Mb")
-
-	flag.Parse()
 }
 
 // PrintMemUsage outputs the current, total and OS memory being used. As well as the number
@@ -109,6 +107,8 @@ func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.
 }
 
 func main() {
+	flag.Parse()
+
 	if goroutine > count {
 		goroutine = count
 	}
