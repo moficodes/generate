@@ -73,7 +73,7 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 	var filelock sync.Mutex
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
-			buf := make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+			buf := make([]byte, bufferSize*1024*1024)
 			index := 0
 			for j := 0; j < dataPerGoroutine; j++ {
 				data := generateNumberHex(generateNumber())
@@ -92,7 +92,7 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 						return err
 					}
 					filelock.Unlock()
-					buf = make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+					buf = make([]byte, bufferSize*1024*1024)
 					index = 0
 				}
 			}
