@@ -22,8 +22,6 @@ var bufferSize int
 
 var dataPerGoroutine int
 
-var r = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 func init() {
 	flag.IntVar(&count, "count", 0, "number of record to generate")
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
@@ -51,7 +49,7 @@ func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
 }
 
-func generateNumber() int {
+func generateNumber(r *rand.Rand) int {
 	return r.Intn(math.MaxInt)
 }
 
@@ -73,10 +71,11 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 	var filelock sync.Mutex
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
+			r := rand.New(rand.NewSource(time.Now().UnixNano()))
 			buf := make([]byte, bufferSize*1024*1024)
 			index := 0
 			for j := 0; j < dataPerGoroutine; j++ {
-				data := generateNumberHex(generateNumber())
+				data := generateNumberHex(generateNumber(r))
 
 				for _, v := range data {
 					buf[index] = v
