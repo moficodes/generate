@@ -78,8 +78,8 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 			for j := 0; j < dataPerGoroutine; j++ {
 				data := generateNumberHex(generateNumber())
 
-				for k := 0; k < len(data); k++ {
-					buf[index] = data[k]
+				for _, v := range data {
+					buf[index] = v
 					index++
 				}
 				buf[index] = '\n'
