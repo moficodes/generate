@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -21,14 +22,13 @@ var bufferSize int
 
 var dataPerGoroutine int
 
+var r = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 func init() {
-	rand.Seed(time.Now().UnixNano())
 	flag.IntVar(&count, "count", 0, "number of record to generate")
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
 	flag.StringVar(&filename, "file", "input.txt", "name of the file")
 	flag.IntVar(&bufferSize, "buffer", 1, "buffer size in Mb")
-
-	flag.Parse()
 }
 
 // PrintMemUsage outputs the current, total and OS memory being used. As well as the number
@@ -52,30 +52,34 @@ func bToMb(b uint64) uint64 {
 }
 
 func generateNumber() int {
-	return rand.Intn(math.MaxInt)
+	return r.Intn(math.MaxInt)
 }
 
 func generateNumberHex(number int) []byte {
 	return []byte(fmt.Sprintf("%019x", number))
 }
 
-func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.Context) error {
-	errs, _ := errgroup.WithContext(ctx)
+func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	filelock := sync.Mutex{}
+	return write(ctx, f, goroutines, dataPerGoroutine)
+}
+
+func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) error {
+	errs, _ := errgroup.WithContext(ctx)
+	var filelock sync.Mutex
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
-			buf := make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+			buf := make([]byte, bufferSize*1024*1024)
 			index := 0
 			for j := 0; j < dataPerGoroutine; j++ {
 				data := generateNumberHex(generateNumber())
 
-				for k := 0; k < len(data); k++ {
-					buf[index] = data[k]
+				for _, v := range data {
+					buf[index] = v
 					index++
 				}
 				buf[index] = '\n'
@@ -83,19 +87,19 @@ func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.
 
 				if index+20 > len(buf) {
 					filelock.Lock()
-					if _, err := f.Write(buf[:index]); err != nil {
+					if _, err := w.Write(buf[:index]); err != nil {
 						filelock.Unlock()
 						return err
 					}
 					filelock.Unlock()
-					buf = make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
+					buf = make([]byte, bufferSize*1024*1024)
 					index = 0
 				}
 			}
 
 			if index > 0 {
 				filelock.Lock()
-				if _, err := f.Write(buf[:index]); err != nil {
+				if _, err := w.Write(buf[:index]); err != nil {
 					filelock.Unlock()
 					return err
 				}
@@ -109,6 +113,8 @@ func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.
 }
 
 func main() {
+	flag.Parse()
+
 	if goroutine > count {
 		goroutine = count
 	}
@@ -132,7 +138,7 @@ func main() {
 	fmt.Println()
 
 	defer duration("gen number", time.Now())
-	writeToFile(filename, goroutine, dataPerGoroutine, context.Background())
+	writeToFile(context.Background(), filename, goroutine, dataPerGoroutine)
 	PrintMemUsage()
 	fmt.Println()
 }
