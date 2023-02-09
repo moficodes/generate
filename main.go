@@ -57,7 +57,7 @@ func generateNumberHex(number int) []byte {
 	return []byte(fmt.Sprintf("%019x", number))
 }
 
-func writeToFile(filename string, goroutines, dataPerGoroutine int, ctx context.Context) error {
+func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
 	errs, _ := errgroup.WithContext(ctx)
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
@@ -132,7 +132,7 @@ func main() {
 	fmt.Println()
 
 	defer duration("gen number", time.Now())
-	writeToFile(filename, goroutine, dataPerGoroutine, context.Background())
+	writeToFile(context.Background(), filename, goroutine, dataPerGoroutine)
 	PrintMemUsage()
 	fmt.Println()
 }
