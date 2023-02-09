@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -59,13 +60,17 @@ func generateNumberHex(number int) []byte {
 }
 
 func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
-	errs, _ := errgroup.WithContext(ctx)
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	filelock := sync.Mutex{}
+	return write(ctx, f, goroutines, dataPerGoroutine)
+}
+
+func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) error {
+	errs, _ := errgroup.WithContext(ctx)
+	var filelock sync.Mutex
 	for i := 0; i < goroutines; i++ {
 		errs.Go(func() error {
 			buf := make([]byte, bufferSize*1024*1024, bufferSize*1024*1024)
@@ -82,7 +87,7 @@ func writeToFile(ctx context.Context, filename string, goroutines, dataPerGorout
 
 				if index+20 > len(buf) {
 					filelock.Lock()
-					if _, err := f.Write(buf[:index]); err != nil {
+					if _, err := w.Write(buf[:index]); err != nil {
 						filelock.Unlock()
 						return err
 					}
@@ -94,7 +99,7 @@ func writeToFile(ctx context.Context, filename string, goroutines, dataPerGorout
 
 			if index > 0 {
 				filelock.Lock()
-				if _, err := f.Write(buf[:index]); err != nil {
+				if _, err := w.Write(buf[:index]); err != nil {
 					filelock.Unlock()
 					return err
 				}
