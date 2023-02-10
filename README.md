@@ -22,6 +22,10 @@ Usage of ./generate:
         name of the file (default "input.txt")
   -goroutine int
         number of goroutine to run
+  -linelength int
+        length of the line (length of each number + 1 for newline) (default 17)
+  -version
+        print version and exit
 ```
 
 ## Example

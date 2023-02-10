@@ -54,7 +54,8 @@ func duration(msg string, start time.Time) {
 }
 
 func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
+	res := b / 1024 / 1024
+	return res
 }
 
 func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
@@ -105,7 +106,7 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 						return err
 					}
 				}
-				outputBuffer = append(outputBuffer, randomHexDigits[linelength*k:linelength*k+linelength]...)
+				outputBuffer = append(outputBuffer, randomHexDigits[(linelength-1)*k:(linelength-1)*k+(linelength-1)]...)
 				outputBuffer = append(outputBuffer, '\n')
 			}
 
@@ -139,9 +140,10 @@ func main() {
 	dataPerGoroutine = count / goroutine
 	count = count - (count % goroutine)
 
+	fmt.Println(linelength * count)
 	fmt.Printf("total count: %d\ngoroutine: %d\n", count, goroutine)
 	fmt.Printf("gen per goroutine: %d\n", dataPerGoroutine)
-	fmt.Printf("total gen: %d\n", bToMb(uint64(count*linelength)))
+	fmt.Printf("total gen: %dMB\n", bToMb(uint64(count*linelength)))
 
 	fmt.Println()
 
