@@ -142,7 +142,11 @@ func main() {
 	fmt.Println()
 
 	defer duration("gen number", time.Now())
-	writeToFile(context.Background(), filename, goroutine, dataPerGoroutine)
+	err := writeToFile(context.Background(), filename, goroutine, dataPerGoroutine)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 	PrintMemUsage()
 	fmt.Println()
 }
