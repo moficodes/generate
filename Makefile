@@ -1,8 +1,8 @@
-BINARY := filesplit
+BINARY := generate
 
 clean:
 	rm -f $(BINARY)
-	rm -f input_*.txt
+	rm -f input*.txt
 
 build: clean
 	CGO_ENABLED=0 go build -ldflags="-s -w" .

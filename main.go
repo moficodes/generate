@@ -16,12 +16,15 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var count int
-var goroutine int
-var filename string
-var bufferSize int
-var VERSION string = "v0.0.0"
-var version bool
+var (
+	count      int
+	goroutine  int
+	filename   string
+	bufferSize int
+	version    bool
+	linelength int
+	VERSION    string = "v0.0.0"
+)
 
 var dataPerGoroutine int
 
@@ -30,6 +33,7 @@ func init() {
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
 	flag.StringVar(&filename, "file", "input.txt", "name of the file")
 	flag.IntVar(&bufferSize, "buffer", 1, "buffer size in Mb")
+	flag.IntVar(&linelength, "linelength", 17, "length of the line (length of each number + 1 for newline)")
 	flag.BoolVar(&version, "version", false, "print version and exit")
 }
 
@@ -78,8 +82,8 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 			r := rand.New(rand.NewSource(time.Now().UnixNano()))
 			randomBytes := make([]byte, 8*n)
 			r.Read(randomBytes)
-			randomHexDigits := make([]byte, 16*n)
-			outputBuffer := make([]byte, 0, 17*n+1) // 1 '\n' after every 16 digits
+			randomHexDigits := make([]byte, (linelength-1)*n)
+			outputBuffer := make([]byte, 0, linelength*n+1) // 1 '\n' after every 16 digits
 
 			flushRefreshReuse := func() error {
 				// Flush to w
@@ -101,7 +105,7 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 						return err
 					}
 				}
-				outputBuffer = append(outputBuffer, randomHexDigits[16*k:16*k+16]...)
+				outputBuffer = append(outputBuffer, randomHexDigits[linelength*k:linelength*k+linelength]...)
 				outputBuffer = append(outputBuffer, '\n')
 			}
 
@@ -137,7 +141,7 @@ func main() {
 
 	fmt.Printf("total count: %d\ngoroutine: %d\n", count, goroutine)
 	fmt.Printf("gen per goroutine: %d\n", dataPerGoroutine)
-	fmt.Printf("total gen: %d\n", bToMb(uint64(count*20)))
+	fmt.Printf("total gen: %d\n", bToMb(uint64(count*linelength)))
 
 	fmt.Println()
 
