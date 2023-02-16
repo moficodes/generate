@@ -10,52 +10,75 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
 var (
-	count      int
-	goroutine  int
-	filename   string
-	bufferSize int
-	version    bool
-	linelength int
-	VERSION    string = "v0.0.0"
+	count         int
+	goroutine     int
+	filename      string
+	bufferSize    int
+	version       bool
+	linelength    int
+	filenameIndex string
+	VERSION       string = "v0.0.0"
 )
 
+var log *logrus.Logger
 var dataPerGoroutine int
 
 func init() {
+	log = logrus.New()
+	log.Level = logrus.DebugLevel
+	log.Formatter = &logrus.JSONFormatter{
+		FieldMap: logrus.FieldMap{
+			logrus.FieldKeyTime:  "timestamp",
+			logrus.FieldKeyLevel: "severity",
+			logrus.FieldKeyMsg:   "message",
+		},
+		TimestampFormat: time.RFC3339Nano,
+	}
+	log.Out = os.Stdout
 	flag.IntVar(&count, "count", 0, "number of record to generate")
 	flag.IntVar(&goroutine, "goroutine", 0, "number of goroutine to run")
 	flag.StringVar(&filename, "file", "input.txt", "name of the file")
 	flag.IntVar(&bufferSize, "buffer", 1, "buffer size in Mb")
 	flag.IntVar(&linelength, "linelength", 17, "length of the line (length of each number + 1 for newline)")
+	flag.StringVar(&filenameIndex, "fileindex", "", "name of the file index")
 	flag.BoolVar(&version, "version", false, "print version and exit")
+}
+
+func humanReadableFilesize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "kMGTPE"[exp])
 }
 
 // PrintMemUsage outputs the current, total and OS memory being used. As well as the number
 // of garage collection cycles completed.
-func PrintMemUsage() {
+func MemUsage() string {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
-	fmt.Printf("alloc = %v MiB", bToMb(m.Alloc))
-	fmt.Printf("\ttotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-	fmt.Printf("\tsys = %v MiB", bToMb(m.Sys))
-	fmt.Printf("\tnumGC = %v\n", m.NumGC)
+	message := fmt.Sprintf("alloc = %s, totalAlloc = %s, sys = %s, numGC = %v", humanReadableFilesize(int64(m.Alloc)), humanReadableFilesize(int64(m.TotalAlloc)), humanReadableFilesize(int64(m.Sys)), m.NumGC)
+	return message
 }
 
 func duration(msg string, start time.Time) {
-	fmt.Printf("%s took %s\n", msg, time.Since(start))
-}
-
-func bToMb(b uint64) uint64 {
-	res := b / 1024 / 1024
-	return res
+	log.Infof("%s took %s", msg, time.Since(start))
 }
 
 func writeToFile(ctx context.Context, filename string, goroutines, dataPerGoroutine int) error {
@@ -118,7 +141,14 @@ func write(ctx context.Context, w io.Writer, goroutines, dataPerGoroutine int) e
 }
 
 func main() {
+	defer duration("gen number", time.Now())
 	flag.Parse()
+
+	logName := os.Getenv("HOSTNAME")
+	if logName == "" {
+		logName = "generate"
+	}
+
 	if version {
 		fmt.Println(VERSION)
 		os.Exit(0)
@@ -133,26 +163,35 @@ func main() {
 	}
 
 	if count == 0 {
-		fmt.Println("no data to produce")
+		log.Error("no data to produce")
 		os.Exit(1)
+	}
+
+	if filenameIndex != "" {
+		index, err := strconv.Atoi(filenameIndex)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		paths := strings.Split(filename, "/")
+		file := paths[len(paths)-1]
+		name := strings.Split(file, ".")[0]
+		ext := strings.Split(file, ".")[1]
+		if len(paths) == 1 {
+			filename = fmt.Sprintf(("%s_%04d.%s"), name, index, ext)
+		} else {
+			filename = fmt.Sprintf(("%s/%s_%04d.%s"), strings.Join(paths[:len(paths)-1], "/"), name, index, ext)
+		}
+
 	}
 
 	dataPerGoroutine = count / goroutine
 	count = count - (count % goroutine)
 
-	fmt.Println(linelength * count)
-	fmt.Printf("total count: %d\ngoroutine: %d\n", count, goroutine)
-	fmt.Printf("gen per goroutine: %d\n", dataPerGoroutine)
-	fmt.Printf("total gen: %dMB\n", bToMb(uint64(count*linelength)))
-
-	fmt.Println()
-
-	defer duration("gen number", time.Now())
+	log.Infof("total count: %d, goroutine: %d, gen per goroutine: %d", count, goroutine, dataPerGoroutine)
 	err := writeToFile(context.Background(), filename, goroutine, dataPerGoroutine)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Error(err)
 	}
-	PrintMemUsage()
-	fmt.Println()
+	log.Infof("total gen: %s, filename: %s", humanReadableFilesize(int64(count*linelength)), filename)
+	log.Debug(MemUsage())
 }
